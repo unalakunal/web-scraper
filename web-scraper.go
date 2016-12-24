@@ -94,6 +94,8 @@ func main() {
 		},
 	}
 
+	httpFlag := false // w/ http if true, false otherwise
+
 	fmt.Println("app.Flags: \n", app.Flags)
 
 	app.Action = func(c *cli.Context) error {
