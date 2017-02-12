@@ -1,12 +1,6 @@
 package main
 
-/*
-TODO:
-- add some commands using github page of codegangsta
-- understand the concurrent search from tutorial page
-- get all the 2016 albums w/ ratings
-
-*/
+// TODO: concurrent search for multiple sites
 
 import (
 	"fmt"
@@ -52,7 +46,6 @@ func searchInHTML(url string) []string {
 			for _, a := range token.Attr {
 				if a.Key == "href" {
 					href = a.Val
-					//fmt.Println("Found link: ", href)
 					links = append(links, href)
 					break
 				}
@@ -68,10 +61,10 @@ func searchInHTML(url string) []string {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "readHTML"
+	app.Name = "web-scraper"
 	app.Version = "0.0.1"
 	app.Compiled = time.Now()
-	app.Usage = "give me a URL and I'll give you a HTML"
+	app.Usage = "finds all the links inside HTML"
 	app.Authors = []cli.Author{
 		{
 			Name:  "Ünal Akünal",
@@ -94,20 +87,14 @@ func main() {
 		},
 	}
 
-	httpFlag := false // w/ http if true, false otherwise
-
-	fmt.Println("app.Flags: \n", app.Flags)
-
 	app.Action = func(c *cli.Context) error {
 		if c.NArg() > 0 {
 			URL = c.Args().Get(0)
 		}
 
-		fmt.Println("url is \n", URL, "\n")
-
 		links := searchInHTML(URL)
 
-		fmt.Println("links are:")
+		fmt.Println("")
 
 		for _, link := range links {
 			if strings.Index(link, "http") == 0 { //fetch only those that begin w/ http
