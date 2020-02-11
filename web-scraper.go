@@ -1,20 +1,19 @@
 package main
 
-// TODO: concurrent search for multiple sites
-
 import (
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/html"
 
 	"github.com/urfave/cli"
 )
 
-func searchInHTML(body io.ReadCloser) (links []string) {
+func searchInHTML(body io.Reader) (links []string) {
 	tokenizer := html.NewTokenizer(body)
 
 	curr := tokenizer.Next()
@@ -43,7 +42,7 @@ func searchInHTML(body io.ReadCloser) (links []string) {
 func main() {
 	app := cli.NewApp()
 	app.Name = "web-scraper"
-	app.Version = "0.0.1"
+	app.Version = "0.0.2"
 	app.Usage = "finds all the links inside HTML"
 	app.Authors = []cli.Author{
 		{
@@ -56,35 +55,52 @@ func main() {
 		fmt.Fprintf(c.App.Writer, "There is no command named %q \n", command)
 	}
 
-	var URL string
+	URLs := cli.StringSlice{}
 
 	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:        "url, u",
-			Value:       "http://google.com",
-			Usage:       "the URL to get data from",
-			Destination: &URL,
+		cli.StringSliceFlag{
+			Name:  "url, u",
+			Value: &URLs,
+			Usage: "the URL to get data from",
 		},
 	}
 
 	app.Action = func(c *cli.Context) error {
-		response, err := http.Get(URL)
-		if err != nil {
-			fmt.Println(err)
+		if len(URLs) == 0 {
+			URLs = append(URLs, "http://google.com") // default value
 		}
-		defer response.Body.Close()
-		links := searchInHTML(response.Body)
+		var wg sync.WaitGroup
+		var mux sync.Mutex
+		data := map[string][]string{}
+		wg.Add(len(URLs))
+		for _, currentUrl := range URLs {
 
-		fmt.Println("")
+			go func(url string) { //goroutine for each url
+				response, err := http.Get(url)
+				if err != nil {
+					fmt.Println(err)
+				}
+				defer response.Body.Close()
+				defer wg.Done()
+				returnedLinks := searchInHTML(response.Body)
+				mux.Lock()
+				data[url] = returnedLinks
+				mux.Unlock()
 
-		for _, link := range links {
-			fmt.Println(link)
+			}(currentUrl)
 		}
-		fmt.Println("")
 
+		wg.Wait()
+
+		for url, links := range data {
+			fmt.Printf("** %s **\n\n", url)
+			for _, link := range links {
+				fmt.Println(link)
+			}
+			fmt.Println("")
+		}
 		return nil
 	}
-
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}
