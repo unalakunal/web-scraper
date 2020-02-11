@@ -4,66 +4,46 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"golang.org/x/net/html"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
-func searchInHTML(url string) []string {
-	// HTTP request
-	var links []string
+func searchInHTML(body io.ReadCloser) (links []string) {
+	tokenizer := html.NewTokenizer(body)
 
-	response, err := http.Get(url)
-	if err != nil {
-		fmt.Println(err)
-		return links
-	}
-
-	tokenizer := html.NewTokenizer(response.Body)
-
-	for {
-		curr := tokenizer.Next()
-
-		if curr == html.ErrorToken {
-			response.Body.Close()
-			return links
-		}
+	curr := tokenizer.Next()
+	for ; curr != html.ErrorToken; curr = tokenizer.Next() {
 
 		if curr == html.StartTagToken {
+
 			token := tokenizer.Token()
+			if token.Data == "a" {
 
-			if token.Data != "a" {
-				continue
-			}
-
-			href := ""
-
-			for _, a := range token.Attr {
-				if a.Key == "href" {
-					href = a.Val
-					links = append(links, href)
-					break
+				for _, a := range token.Attr {
+					if a.Key == "href" {
+						if strings.Index(a.Val, "http") == 0 {
+							links = append(links, a.Val)
+							break
+						}
+					}
 				}
-			}
-
-			if href == "" {
-				continue
 			}
 		}
 
 	}
+	return links
 }
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "web-scraper"
 	app.Version = "0.0.1"
-	app.Compiled = time.Now()
 	app.Usage = "finds all the links inside HTML"
 	app.Authors = []cli.Author{
 		{
@@ -88,24 +68,24 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		if c.NArg() > 0 {
-			URL = c.Args().Get(0)
+		response, err := http.Get(URL)
+		if err != nil {
+			fmt.Println(err)
 		}
-
-		links := searchInHTML(URL)
+		defer response.Body.Close()
+		links := searchInHTML(response.Body)
 
 		fmt.Println("")
 
 		for _, link := range links {
-			if strings.Index(link, "http") == 0 { //fetch only those that begin w/ http
-				fmt.Println(link)
-			}
+			fmt.Println(link)
 		}
-
 		fmt.Println("")
 
 		return nil
 	}
 
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		panic(err)
+	}
 }
