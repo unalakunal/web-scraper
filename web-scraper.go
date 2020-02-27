@@ -1,69 +1,48 @@
 package main
 
-// TODO: concurrent search for multiple sites
-
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
-	"time"
+	"sync"
 
 	"golang.org/x/net/html"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
-func searchInHTML(url string) []string {
-	// HTTP request
-	var links []string
+func searchInHTML(body io.Reader) (links []string) {
+	tokenizer := html.NewTokenizer(body)
 
-	response, err := http.Get(url)
-	if err != nil {
-		fmt.Println(err)
-		return links
-	}
-
-	tokenizer := html.NewTokenizer(response.Body)
-
-	for {
-		curr := tokenizer.Next()
-
-		if curr == html.ErrorToken {
-			response.Body.Close()
-			return links
-		}
+	curr := tokenizer.Next()
+	for ; curr != html.ErrorToken; curr = tokenizer.Next() {
 
 		if curr == html.StartTagToken {
+
 			token := tokenizer.Token()
+			if token.Data == "a" {
 
-			if token.Data != "a" {
-				continue
-			}
-
-			href := ""
-
-			for _, a := range token.Attr {
-				if a.Key == "href" {
-					href = a.Val
-					links = append(links, href)
-					break
+				for _, a := range token.Attr {
+					if a.Key == "href" {
+						if strings.Index(a.Val, "http") == 0 {
+							links = append(links, a.Val)
+							break
+						}
+					}
 				}
-			}
-
-			if href == "" {
-				continue
 			}
 		}
 
 	}
+	return links
 }
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "web-scraper"
-	app.Version = "0.0.1"
-	app.Compiled = time.Now()
+	app.Version = "0.0.2"
 	app.Usage = "finds all the links inside HTML"
 	app.Authors = []cli.Author{
 		{
@@ -76,36 +55,53 @@ func main() {
 		fmt.Fprintf(c.App.Writer, "There is no command named %q \n", command)
 	}
 
-	var URL string
+	URLs := cli.StringSlice{}
 
 	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:        "url, u",
-			Value:       "http://google.com",
-			Usage:       "the URL to get data from",
-			Destination: &URL,
+		cli.StringSliceFlag{
+			Name:  "url, u",
+			Value: &URLs,
+			Usage: "the URL to get data from",
 		},
 	}
 
 	app.Action = func(c *cli.Context) error {
-		if c.NArg() > 0 {
-			URL = c.Args().Get(0)
+		if len(URLs) == 0 {
+			URLs = append(URLs, "http://google.com") // default value
+		}
+		var wg sync.WaitGroup
+		var mux sync.Mutex
+		data := map[string][]string{}
+		wg.Add(len(URLs))
+		for _, currentUrl := range URLs {
+
+			go func(url string) { //goroutine for each url
+				response, err := http.Get(url)
+				if err != nil {
+					fmt.Println(err)
+				}
+				defer response.Body.Close()
+				defer wg.Done()
+				returnedLinks := searchInHTML(response.Body)
+				mux.Lock()
+				data[url] = returnedLinks
+				mux.Unlock()
+
+			}(currentUrl)
 		}
 
-		links := searchInHTML(URL)
+		wg.Wait()
 
-		fmt.Println("")
-
-		for _, link := range links {
-			if strings.Index(link, "http") == 0 { //fetch only those that begin w/ http
+		for url, links := range data {
+			fmt.Printf("** %s **\n\n", url)
+			for _, link := range links {
 				fmt.Println(link)
 			}
+			fmt.Println("")
 		}
-
-		fmt.Println("")
-
 		return nil
 	}
-
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		panic(err)
+	}
 }

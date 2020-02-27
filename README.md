@@ -10,7 +10,7 @@ Simple web scraper in GoLang to find all links inside an HTML
     web-scraper [global options] command [command options] [arguments...]
 
     VERSION:
-    0.0.1
+    0.0.2
 
     AUTHOR:
     Ünal Akünal <unal.akunal@gmail.com>
@@ -22,3 +22,9 @@ Simple web scraper in GoLang to find all links inside an HTML
     --url value, -u value  the URL to get data from (default: "http://google.com")
     --help, -h             show help
     --version, -v          print the version
+
+## Concurrency
+
+To parse multiple links in parallel, do:
+
+`./web-scraper -u http://github.com -u http://facebook.com`
